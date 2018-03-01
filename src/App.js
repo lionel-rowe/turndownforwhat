@@ -11,7 +11,7 @@ import IconButton from 'material-ui/IconButton';
 import marked from 'marked';
 import TurndownService from './turndown/lib/turndown.es.js';
 import MarkdownMark from './markdown-mark.js';
-import {gfm} from 'turndown-plugin-gfm';
+import {tables, taskListItems} from 'turndown-plugin-gfm';
 import {diffWords} from 'diff';
 import JSZip from 'jszip';
 import {saveAs} from 'file-saver';
@@ -26,7 +26,7 @@ const muiTheme = getMuiTheme({
 //marked setup
 
 const renderer = new marked.Renderer();
-renderer.heading = function(text, level) {
+renderer.heading = (text, level) => {
     return `<h${level}>${text}</h${level}>`;
 };
 
@@ -56,7 +56,8 @@ const turndownService = new TurndownService({
   },
 });
 
-turndownService.use(gfm);
+turndownService.use(tables);
+turndownService.use(taskListItems);
 
 turndownService.addRule('noReplace', {
   filter: (node) => {
@@ -66,7 +67,14 @@ turndownService.addRule('noReplace', {
   },
   replacement: (content, node) => {
     return `${node.outerHTML.match(/<.+?>/)[0]}${content}</${node.nodeName.toLowerCase()}>`;
-  }
+  },
+});
+
+turndownService.addRule('noReplace', {
+  filter: ['del', 's', 'strike'],
+  replacement: (content) => {
+    return `~~${content}~~`;
+  },
 });
 
 // ---
