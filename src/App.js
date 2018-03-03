@@ -9,19 +9,18 @@ import FontIcon from 'material-ui/FontIcon';
 import SvgIcon from 'material-ui/SvgIcon';
 import IconButton from 'material-ui/IconButton';
 import marked from 'marked';
-import TurndownService from './turndown/lib/turndown.es.js';
+import TurndownService from 'turndown';
 import MarkdownMark from './markdown-mark.js';
 import {tables, taskListItems} from 'turndown-plugin-gfm';
-import {diffWords} from 'diff';
+import {diffChars, diffWords, diffWordsWithSpace, diffLines, convertChangesToXML} from 'diff';
 import JSZip from 'jszip';
 import {saveAs} from 'file-saver';
 
 //app theme setup
 
 const muiTheme = getMuiTheme({
-  fontFamily: 'Roboto, Microsoft YaHei, 微软雅黑, 微軟雅黑, sans-serif',
+  fontFamily: 'Roboto, sans-serif, Microsoft YaHei, 微软雅黑, 微軟雅黑',
 });
-
 
 //marked setup
 
@@ -46,7 +45,8 @@ const turndownService = new TurndownService({
   headingStyle: 'atx',
   bulletListMarker: '-',
   codeBlockStyle: 'fenced',
-  hr: '_'.repeat(30),
+  emDelimiter: '*',
+  hr: '---',
   blankReplacement: (content, node) => {
     if (node.attributes.length) {
       return node.outerHTML;
@@ -59,6 +59,9 @@ const turndownService = new TurndownService({
 turndownService.use(tables);
 turndownService.use(taskListItems);
 
+turndownService.useCRLF = true;
+
+//keep rule needs to be added with `addRule` to take precedence over standard rules
 turndownService.addRule('noReplace', {
   filter: (node) => {
     const keepers = ['span', 'p', 'div'];
@@ -70,11 +73,31 @@ turndownService.addRule('noReplace', {
   },
 });
 
-turndownService.addRule('noReplace', {
+turndownService.addRule('strike', {
   filter: ['del', 's', 'strike'],
   replacement: (content) => {
     return `~~${content}~~`;
   },
+});
+
+turndownService.addRule('listItem', {
+  filter: 'li',
+  replacement: (content, node, options) => {
+    const cleanedContent = content
+      .replace(/^\n+/, '') // remove leading newlines
+      .replace(/\n+$/, '\n') // replace trailing newlines with just a single one
+      .replace(/\n/gm, '\n  '); // indent
+    let prefix = options.bulletListMarker + ' ';
+    const parent = node.parentNode;
+    if (parent.nodeName === 'OL') {
+      const start = parent.getAttribute('start');
+      const index = Array.prototype.indexOf.call(parent.children, node);
+      prefix = (start ? Number(start) + index : index + 1) + '. ';
+    }
+    return (
+      prefix + cleanedContent + (node.nextSibling && !/\n$/.test(cleanedContent) ? '\n' : '')
+    );
+  }
 });
 
 // ---
@@ -110,10 +133,16 @@ const turnDown = (html) => {
   const doc = parser.parseFromString(html, 'text/html');
   const allContent = doc.querySelector('body');
 
-  const turnedDown = turndownService.turndown(allContent);
-  const turnedDownNormalized = turnedDown.replace(/(\n\s+$)+/gm, '\n');
+  let turnedDown = turndownService.turndown(allContent)
+    .replace(/(\n\s+$)+/gm, '\n')
+    .replace(/\n?$/, '\n')
 
-  return turnedDownNormalized + '\n';
+  if (turndownService.useCRLF) {
+    turnedDown = turnedDown.replace(/\n/g, '\r\n');
+  }
+
+  return turnedDown;
+
 }
 
 const checkFidelity = (markdown, title) => {
@@ -130,48 +159,32 @@ const checkFidelity = (markdown, title) => {
   const content1 = doc1.querySelector('body');
   const content2 = doc2.querySelector('body');
 
-  const htmlDiff = diffWords(content1.innerHTML, content2.innerHTML);
-  const mdDiff = diffWords(markdown, turnedOnce);
+  const htmlDiff = diffLines(content1.innerHTML.trim(), content2.innerHTML.trim());
+  const mdDiff = diffLines(markdown.replace(/\r?\n/g, '\n').trim(), turnedOnce.replace(/\r?\n/g, '\n').trim()); //ignore diff between CRLF and LF
 
   const formatDiff = (diff) => {
-    const diffMap = diff.map(part => {
-      const background = part.added
-      ? 'lawngreen'
-      : part.removed
-        ? 'salmon'
-        : null;
-      const partSpan = document.createElement('span');
-      partSpan.style.background = background;
-      partSpan.textContent = part.value;
-      return partSpan;
-    });
-    const containerDiv = document.createElement('div');
-    diffMap.forEach(span => containerDiv.appendChild(span));
-    return `<pre><code>${containerDiv.innerHTML}</pre></code>`;
+    return `<pre><code>
+${convertChangesToXML(diff)
+  .replace(/\n/g, '<span class="newline">\u21b5\n</span>')}
+</pre></code>`;
   }
+
+  console.log(mdDiff);
 
   return `<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8">
     <title>${title} &mdash; diff report</title>
-    <style type="text/css">
-      body {
-        font-family: 'Calibri', sans-serif;
-        max-width: 750px;
-        margin: auto;
-      }
-      pre {
-        white-space: pre-wrap;
-      }
-    </style>
+    <style type="text/css">body {font-family: 'Calibri', sans-serif;max-width: 750px;margin: auto;}pre {white-space: pre-wrap;}del {background: salmon}
+      ins {background: lawngreen}.newline {color: lightgray}del .newline {color: firebrick}ins .newline {color: forestgreen}</style>
   </head>
   <body>
     <h1>${title} &mdash; diff report</h1>
-    <h2>Markdown diff</h2>
-    ${formatDiff(mdDiff)}
     <h2>HTML diff</h2>
     ${formatDiff(htmlDiff)}
+    <h2>Markdown diff</h2>
+    ${formatDiff(mdDiff)}
   </body>
 </html>
 `;
