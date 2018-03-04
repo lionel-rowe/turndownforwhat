@@ -1,4 +1,8 @@
 # TODO
 
 * Fix known issues:
-  - Table alignment with `:---:` etc.
+  - Nested lists [done]
+  - Code comments [done]
+  - Table alignment with `:---:` etc. [done]
+
+* Deal with conditional items better [done]

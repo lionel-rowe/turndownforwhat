@@ -1,4 +1,4 @@
-import React, { Component } from 'react';
+import React, {Component} from 'react';
 import './lib/fa/css/fontawesome-all.min.css';
 import MuiThemeProvider from 'material-ui/styles/MuiThemeProvider';
 import getMuiTheme from 'material-ui/styles/getMuiTheme';
@@ -8,11 +8,14 @@ import AppBar from 'material-ui/AppBar';
 import FontIcon from 'material-ui/FontIcon';
 import SvgIcon from 'material-ui/SvgIcon';
 import IconButton from 'material-ui/IconButton';
+import Dialog from 'material-ui/Dialog';
 import marked from 'marked';
 import TurndownService from 'turndown';
 import MarkdownMark from './markdown-mark.js';
-import {tables, taskListItems} from 'turndown-plugin-gfm';
-import {diffChars, diffWords, diffWordsWithSpace, diffLines, convertChangesToXML} from 'diff';
+import {tables} from 'turndown-plugin-gfm';
+import {createPatch} from 'diff';
+import {Diff2Html} from 'diff2html';
+import diff2HtmlStyles from './diff2htmlStyles.js';
 import JSZip from 'jszip';
 import {saveAs} from 'file-saver';
 
@@ -25,8 +28,43 @@ const muiTheme = getMuiTheme({
 //marked setup
 
 const renderer = new marked.Renderer();
+
 renderer.heading = (text, level) => {
-    return `<h${level}>${text}</h${level}>`;
+    return `<h${level}>${text}</h${level}>\n`;
+};
+
+renderer.tablecell = function(content, flags) {
+  var type = flags.header ? 'th' : 'td';
+  var tag = flags.align
+    ? '<' + type + ' align="' + flags.align + '">'
+    : '<' + type + '>';
+  return tag + content + '</' + type + '>\n';
+};
+
+renderer.code = (code) => {
+
+  const escapedCode = code
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+
+  const commentStart = '</code><span class="code-comment">';
+  const commentEnd = '</span><code>';
+
+  const commentOmittedCode = escapedCode
+    .replace(/^(.*(?:(?:\/\/)|#) ?)(.+)$|(\/\* ?)([^]+?)( ?\*\/)|(&lt;!-- ?)([^]+?)( ?--&gt;)/gm, (match, p1, p2, p3, p4, p5, p6, p7, p8) => {
+      if (p1) {
+        return `${p1}${commentStart}${p2}${commentEnd}`;
+      } else if (p3) {
+        return `${p3}${commentStart}${p4}${commentEnd}${p5}`;
+      } else if (p6) {
+        return `${p6}${commentStart}${p7}${commentEnd}${p8}`;
+      }
+    });
+
+  return `<pre><code>${commentOmittedCode}</code></pre>\n`;
 };
 
 marked.setOptions({
@@ -57,9 +95,8 @@ const turndownService = new TurndownService({
 });
 
 turndownService.use(tables);
-turndownService.use(taskListItems);
 
-turndownService.useCRLF = true;
+turndownService.useCRLF = false;
 
 //keep rule needs to be added with `addRule` to take precedence over standard rules
 turndownService.addRule('noReplace', {
@@ -73,6 +110,11 @@ turndownService.addRule('noReplace', {
   },
 });
 
+turndownService.addRule('removeScript', {
+  filter: 'script',
+  replacement: (content) => ''
+});
+
 turndownService.addRule('strike', {
   filter: ['del', 's', 'strike'],
   replacement: (content) => {
@@ -82,8 +124,9 @@ turndownService.addRule('strike', {
 
 turndownService.addRule('listItem', {
   filter: 'li',
-  replacement: (content, node, options) => {
-    const cleanedContent = content
+
+  replacement: function (content, node, options) {
+    const cleanContent = content
       .replace(/^\n+/, '') // remove leading newlines
       .replace(/\n+$/, '\n') // replace trailing newlines with just a single one
       .replace(/\n/gm, '\n  '); // indent
@@ -95,15 +138,31 @@ turndownService.addRule('listItem', {
       prefix = (start ? Number(start) + index : index + 1) + '. ';
     }
     return (
-      prefix + cleanedContent + (node.nextSibling && !/\n$/.test(cleanedContent) ? '\n' : '')
+      prefix + cleanContent + (node.nextSibling && !/\n$/.test(cleanContent) ? '\n' : '')
     );
+  }
+});
+
+turndownService.addRule('fencedCodeBlock', {
+  filter: (node) => {
+    return node.nodeName === 'PRE'
+    && node.firstChild
+    && node.firstChild.nodeName === 'CODE';
+  },
+  replacement: (content, node, options) => {
+    return `
+
+${options.fence}
+${node.textContent}
+${options.fence}
+
+`;
   }
 });
 
 // ---
 
 const formatDate = (date) => {
-  // return `${date.getFullYear()}${`${date.getMonth() + 1}`.padStart(2, '0')}${`${date.getDate()}`.padStart(2, '0')}_${date.getHours()}${date.getMinutes()}${date.getSeconds()}`;
   return date.valueOf().toString(36);
 }
 
@@ -115,13 +174,13 @@ const markUp = (markdown, title) => {
     <meta charset="utf-8">
     <title>${title && title.replace(/.+/, '')}</title>
     <style type="text/css">
-      [site]:not([site="intl"]) {
-        display: none;
-      }
+      body {font-family:'Calibri',sans-serif;width:calc(100% - 250px)}h1,h2,h3,h4,h5,h6 {font-family:'Cambria',serif}table {border-collapse:collapse}thead{font-weight:bold}td{border:1px solid gray}.code-comment{background:gainsboro}.hidden{display:none;}.conditionalized{background:#ff8}
     </style>
   </head>
   <body>
     ${marked(markdown)}
+    <script>"use strict";{var n=function(c,a,b){return b.indexOf(c)===a},o=function(a){return document.querySelector(a)},i=function(a){return document.querySelectorAll(a)},t=Array.from(i("[condition]")).map(function(a){return a.getAttribute("condition")}).filter(n),d=[];t.forEach(function(a){return d.push({o:a,values:Array.from(i("["+a+"]")).map(function(b){return b.getAttribute(a)}).filter(n)})});var e=d.filter(function(a){return 1<a.values.length});if(e.length){e.forEach(function(a){a.values.forEach(function(b,c){i("["+a.o+"]").forEach(function(f){f.classList.add("conditionalized")}),0!==c&&i("["+a.o+"="+b+"]").forEach(function(f){f.classList.add("hidden")})})});var _n2=e.map(function(a){return"<div><strong>"+a.o+"</strong>: "+a.values.map(function(b,c){return"<label style='padding:10px;cursor:pointer'><input type='radio' class='conditionToggle' style='cursor:pointer' name='"+a.o+"' value='"+b+"'"+(0===c?" checked":"")+"> "+b+"</label>"}).join(" ")+"</div>"}).join("");o("body").insertAdjacentHTML("afterbegin","<div style='position:fixed;top:0;right:0;bottom:0;width:200px;padding:0 0 0 20px'><h5>Show <span class='conditionalized'>conditional content</span></h5>"+_n2+"</div>"),i(".conditionToggle").forEach(function(a){a.addEventListener("change",function(b){b.target.checked&&(i("["+b.target.name+"="+b.target.value+"]").forEach(function(c){c.classList.remove("hidden")}),i("["+b.target.name+"]:not(["+b.target.name+"="+b.target.value+"])").forEach(function(c){c.classList.add("hidden")}))})})}}</script>
+
   </body>
 </html>
 `;
@@ -145,7 +204,7 @@ const turnDown = (html) => {
 
 }
 
-const checkFidelity = (markdown, title) => {
+const checkFidelity = (markdown, filename) => {
 
   const parser = new DOMParser();
 
@@ -159,38 +218,35 @@ const checkFidelity = (markdown, title) => {
   const content1 = doc1.querySelector('body');
   const content2 = doc2.querySelector('body');
 
-  const htmlDiff = diffLines(content1.innerHTML.trim(), content2.innerHTML.trim());
-  const mdDiff = diffLines(markdown.replace(/\r?\n/g, '\n').trim(), turnedOnce.replace(/\r?\n/g, '\n').trim()); //ignore diff between CRLF and LF
+  const htmlDiff = createPatch(filename, content1.innerHTML.trim(), content2.innerHTML.trim());
+  const mdDiff = createPatch(filename, markdown.replace(/\r?\n/g, '\n').trim(), turnedOnce.replace(/\r?\n/g, '\n').trim()); //ignore diff between CRLF and LF
 
-  const formatDiff = (diff) => {
-    return `<pre><code>
-${convertChangesToXML(diff)
-  .replace(/\n/g, '<span class="newline">\u21b5\n</span>')}
-</pre></code>`;
-  }
-
-  console.log(mdDiff);
+  const title = `Diff Report for File: ${filename}`;
 
   return `<!DOCTYPE html>
 <html>
   <head>
     <meta charset="utf-8">
-    <title>${title} &mdash; diff report</title>
-    <style type="text/css">body {font-family: 'Calibri', sans-serif;max-width: 750px;margin: auto;}pre {white-space: pre-wrap;}del {background: salmon}
-      ins {background: lawngreen}.newline {color: lightgray}del .newline {color: firebrick}ins .newline {color: forestgreen}</style>
+    <title>${title}</title>
+    <style type="text/css">
+      body {font-family: "Calibri", sans-serif}
+      ${diff2HtmlStyles}
+      .d2h-code-line-ctn {white-space: pre-wrap}
+    </style>
   </head>
   <body>
-    <h1>${title} &mdash; diff report</h1>
+    <h1>${title}</h1>
+    <div><em>Generated ${new Date().toString()}</em></div>
     <h2>HTML diff</h2>
-    ${formatDiff(htmlDiff)}
+    ${Diff2Html.getPrettyHtml(htmlDiff, {inputFormat: 'diff', matching: 'lines'})}
     <h2>Markdown diff</h2>
-    ${formatDiff(mdDiff)}
+    ${Diff2Html.getPrettyHtml(mdDiff, {inputFormat: 'diff', matching: 'lines'})}
   </body>
 </html>
 `;
 }
 
-const htmlToggle = (<span>HTML<br /><FontIcon className='fab fa-html5' title='HTML' /></span>);
+const htmlToggle = (<span>HTML<br /><FontIcon className='fa fa-code' style={{fontSize: '1em'}} /></span>);
 const markdownToggle = (<span>Markdown<br /><SvgIcon width='208' height='128' viewBox='0 0 208 128'><MarkdownMark /></SvgIcon></span>);
 
 class App extends Component {
@@ -216,8 +272,6 @@ class App extends Component {
     } else {
       this.setState({inputSource: null, fileName: null, fromExt: null, toExt: null});
     }
-
-    // setTimeout(() => console.log(this.state), 500);
 
   };
 
@@ -272,16 +326,25 @@ See DIFF_REPORT_${formattedDate}.html for any changes to expect when converting 
       });
 
     } else {
-      alert('No file uploaded. Please upload a file.')
+      this.handleDialogOpen();
     }
-  }
+  };
+
+  handleDialogClose = () => {
+    this.setState({dialogOpen: false});
+  };
+
+  handleDialogOpen = () => {
+    this.setState({dialogOpen: true});
+  };
 
   state = {
     isFromHtml: false,
     inputSource: null,
     fileName: null,
     fromExt: null,
-    toExt: null
+    toExt: null,
+    dialogOpen: false
   };
 
   render() {
@@ -364,6 +427,20 @@ See DIFF_REPORT_${formattedDate}.html for any changes to expect when converting 
               onClick={this.convertFile}
             />
           </form>
+          <Dialog
+            title='No file uploaded'
+            actions={[<FlatButton
+              label='OK'
+              primary={true}
+              onClick={this.handleDialogClose}
+              keyboardFocused={true}
+            />]}
+            modal={false}
+            open={this.state.dialogOpen}
+            onRequestClose={this.handleDialogClose}
+          >
+            Please upload a file.
+          </Dialog>
         </div>
       </MuiThemeProvider>
     );
