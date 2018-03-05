@@ -19,6 +19,13 @@ import diff2HtmlStyles from './diff2htmlStyles.js';
 import JSZip from 'jszip';
 import {saveAs} from 'file-saver';
 
+const htmlEscape = (text) => text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+
 //app theme setup
 
 const muiTheme = getMuiTheme({
@@ -41,14 +48,32 @@ renderer.tablecell = function(content, flags) {
   return tag + content + '</' + type + '>\n';
 };
 
-renderer.code = (code) => {
+// Renderer.prototype.code = function(code, lang, escaped) {
+//   if (this.options.highlight) {
+//     var out = this.options.highlight(code, lang);
+//     if (out != null && out !== code) {
+//       escaped = true;
+//       code = out;
+//     }
+//   }
 
-  const escapedCode = code
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
+//   if (!lang) {
+//     return '<pre><code>'
+//       + (escaped ? code : escape(code, true))
+//       + '\n</code></pre>';
+//   }
+
+//   return '<pre><code class="'
+//     + this.options.langPrefix
+//     + escape(lang, true)
+//     + '">'
+//     + (escaped ? code : escape(code, true))
+//     + '\n</code></pre>\n';
+// };
+
+renderer.code = (code, lang) => {
+
+  const escapedCode = htmlEscape(code);
 
   const commentStart = '</code><span class="code-comment">';
   const commentEnd = '</span><code>';
@@ -64,7 +89,7 @@ renderer.code = (code) => {
       }
     });
 
-  return `<pre><code>${commentOmittedCode}</code></pre>\n`;
+  return `<pre${lang ? ` class="lang-${htmlEscape(lang)}` : ''}"><code>${commentOmittedCode}</code></pre>\n`;
 };
 
 marked.setOptions({
@@ -144,6 +169,30 @@ turndownService.addRule('listItem', {
   }
 });
 
+
+// rules.fencedCodeBlock = {
+//   filter: function (node, options) {
+//     return (
+//       options.codeBlockStyle === 'fenced' &&
+//       node.nodeName === 'PRE' &&
+//       node.firstChild &&
+//       node.firstChild.nodeName === 'CODE'
+//     )
+//   },
+
+//   replacement: function (content, node, options) {
+//     var className = node.firstChild.className || '';
+//     var language = (className.match(/language-(\S+)/) || [null, ''])[1];
+
+//     return (
+//       '\n\n' + options.fence + language + '\n' +
+//       node.firstChild.textContent +
+//       '\n' + options.fence + '\n\n'
+//     )
+//   }
+// };
+
+
 turndownService.addRule('fencedCodeBlock', {
   filter: (node) => {
     return node.nodeName === 'PRE'
@@ -151,9 +200,12 @@ turndownService.addRule('fencedCodeBlock', {
     && node.firstChild.nodeName === 'CODE';
   },
   replacement: (content, node, options) => {
+    const className = node.className || '';
+    const language = (className.match(/lang-(\S+)/) || [null, ''])[1];
+
     return `
 
-${options.fence}
+${options.fence}${language}
 ${node.textContent}
 ${options.fence}
 
