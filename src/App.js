@@ -69,6 +69,7 @@ renderer.code = (code) => {
 
 marked.setOptions({
   gfm: true,
+  breaks: true,
   tables: true,
   sanitize: false,
   smartLists: true,
