@@ -89,7 +89,7 @@ renderer.code = (code, lang) => {
       }
     });
 
-  return `<pre${lang ? ` class="lang-${htmlEscape(lang)}` : ''}"><code>${commentOmittedCode}</code></pre>\n`;
+  return `<pre${lang ? ` class="lang-${htmlEscape(lang)}"` : ''}><code>${commentOmittedCode}</code></pre>\n`;
 };
 
 marked.setOptions({
@@ -169,6 +169,20 @@ turndownService.addRule('listItem', {
   }
 });
 
+turndownService.addRule('inlineLink', {
+  filter: (node, options) => {
+    return (
+      options.linkStyle === 'inlined' &&
+      node.nodeName === 'A'
+    )
+  },
+
+  replacement: (content, node) => {
+    const href = node.getAttribute('href');
+    const title = node.title ? ' "' + node.title + '"' : '';
+    return '[' + content + '](' + href + title + ')'
+  }
+});
 
 // rules.fencedCodeBlock = {
 //   filter: function (node, options) {
