@@ -48,29 +48,6 @@ renderer.tablecell = function(content, flags) {
   return tag + content + '</' + type + '>\n';
 };
 
-// Renderer.prototype.code = function(code, lang, escaped) {
-//   if (this.options.highlight) {
-//     var out = this.options.highlight(code, lang);
-//     if (out != null && out !== code) {
-//       escaped = true;
-//       code = out;
-//     }
-//   }
-
-//   if (!lang) {
-//     return '<pre><code>'
-//       + (escaped ? code : escape(code, true))
-//       + '\n</code></pre>';
-//   }
-
-//   return '<pre><code class="'
-//     + this.options.langPrefix
-//     + escape(lang, true)
-//     + '">'
-//     + (escaped ? code : escape(code, true))
-//     + '\n</code></pre>\n';
-// };
-
 renderer.code = (code, lang) => {
 
   const escapedCode = htmlEscape(code);
@@ -79,13 +56,15 @@ renderer.code = (code, lang) => {
   const commentEnd = '</span><code>';
 
   const commentOmittedCode = escapedCode
-    .replace(/^(.*(?:(?:\/\/)|#) ?)(.+)$|(\/\* ?)([^]+?)( ?\*\/)|(&lt;!-- ?)([^]+?)( ?--&gt;)/gm, (match, p1, p2, p3, p4, p5, p6, p7, p8) => {
-      if (p1) {
-        return `${p1}${commentStart}${p2}${commentEnd}`;
-      } else if (p3) {
-        return `${p3}${commentStart}${p4}${commentEnd}${p5}`;
-      } else if (p6) {
-        return `${p6}${commentStart}${p7}${commentEnd}${p8}`;
+    .replace(/^(.*?(https?:)?(?:\/\/)|# ?)(.+)$|(\/\* ?)([^]+?)( ?\*\/)|(&lt;!-- ?)([^]+?)( ?--&gt;)/gm, (match, p1, p2, p3, p4, p5, p6, p7, p8, p9) => {
+      if (p2) {
+        return match;
+      } else if (p1) {
+        return `${p1}${commentStart}${p3}${commentEnd}`;
+      } else if (p4) {
+        return `${p4}${commentStart}${p5}${commentEnd}${p6}`;
+      } else if (p7) {
+        return `${p7}${commentStart}${p8}${commentEnd}${p9}`;
       }
     });
 
